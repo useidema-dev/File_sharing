@@ -1,0 +1,251 @@
+/* ===========================
+   Responsive Styles
+   =========================== */
+
+/* Tablet Styles (max-width: 1024px) */
+@media (max-width: 1024px) {
+    .search-box {
+        min-width: 200px;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .files-grid {
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    }
+
+    .folders-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    }
+}
+
+/* Mobile Styles (max-width: 768px) */
+@media (max-width: 768px) {
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        transform: translateX(-100%);
+        z-index: 200;
+    }
+
+    .sidebar.active {
+        transform: translateX(0);
+    }
+
+    .sidebar-toggle {
+        display: block;
+    }
+
+    .mobile-menu-toggle {
+        display: flex;
+    }
+
+    .main-content {
+        width: 100%;
+    }
+
+    .top-bar {
+        padding: 12px 16px;
+    }
+
+    .page-title {
+        font-size: 20px;
+    }
+
+    .search-box {
+        min-width: auto;
+        max-width: 200px;
+    }
+
+    .content-area {
+        padding: 16px;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .files-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 12px;
+    }
+
+    .folders-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .files-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .toolbar-left,
+    .toolbar-right {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .quick-actions {
+        flex-direction: column;
+    }
+
+    .action-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .modal-content {
+        width: 95%;
+        max-height: 80vh;
+    }
+
+    .upload-area {
+        padding: 40px 20px;
+        margin: 12px;
+    }
+
+    .hero-title {
+        font-size: 32px;
+    }
+
+    .hero-subtitle {
+        font-size: 16px;
+    }
+
+    .features-section {
+        grid-template-columns: 1fr;
+    }
+
+    .landing-nav {
+        padding: 16px 20px;
+    }
+
+    .landing-main {
+        padding: 40px 20px;
+    }
+
+    .nav-brand {
+        font-size: 20px;
+    }
+}
+
+/* Small Mobile Styles (max-width: 480px) */
+@media (max-width: 480px) {
+    .top-bar-right {
+        gap: 8px;
+    }
+
+    .search-box {
+        display: none;
+    }
+
+    .btn {
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+
+    .stat-value {
+        font-size: 24px;
+    }
+
+    .file-card {
+        padding: 12px;
+    }
+
+    .file-preview {
+        height: 100px;
+    }
+
+    .files-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .user-email {
+        display: none;
+    }
+
+    .hero-title {
+        font-size: 28px;
+    }
+
+    .auth-box {
+        padding: 24px;
+    }
+
+    .modal-header {
+        padding: 16px;
+    }
+
+    .modal-body,
+    .modal-footer {
+        padding: 16px;
+    }
+}
+
+/* Dark Mode Toggle Animation */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --primary-color: #818cf8;
+        --primary-hover: #6366f1;
+        --primary-light: #1e1b4b;
+        
+        --bg-primary: #111827;
+        --bg-secondary: #1f2937;
+        --bg-tertiary: #374151;
+        
+        --text-primary: #f9fafb;
+        --text-secondary: #d1d5db;
+        --text-tertiary: #9ca3af;
+        
+        --border-color: #374151;
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+}
+
+/* Overlay for Mobile Menu */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 150;
+}
+
+.sidebar-overlay.active {
+    display: block;
+}
+
+@media (max-width: 768px) {
+    .sidebar.active ~ .sidebar-overlay {
+        display: block;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .sidebar,
+    .top-bar,
+    .quick-actions,
+    .files-toolbar,
+    .modal {
+        display: none !important;
+    }
+
+    .main-content {
+        width: 100%;
+    }
+
+    .content-area {
+        padding: 0;
+    }
+}

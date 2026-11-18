@@ -1,0 +1,44 @@
+/* Import existing styles */
+@import url('../css/style.css');
+@import url('../css/dashboard.css');
+@import url('../css/responsive.css');
+
+/* React specific overrides */
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+.app {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Loading spinner */
+.loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-size: 18px;
+  color: var(--text-secondary);
+}
+
+/* Smooth transitions */
+.fade-enter {
+  opacity: 0;
+}
+
+.fade-enter-active {
+  opacity: 1;
+  transition: opacity 300ms;
+}
+
+.fade-exit {
+  opacity: 1;
+}
+
+.fade-exit-active {
+  opacity: 0;
+  transition: opacity 300ms;
+}

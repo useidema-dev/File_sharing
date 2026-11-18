@@ -1,0 +1,566 @@
+/* ===========================
+   CSS Variables & Root Styles
+   =========================== */
+:root {
+    /* Light Theme Colors */
+    --primary-color: #6366f1;
+    --primary-hover: #4f46e5;
+    --primary-light: #eef2ff;
+    
+    --success-color: #10b981;
+    --warning-color: #f59e0b;
+    --danger-color: #ef4444;
+    --info-color: #3b82f6;
+    
+    --bg-primary: #ffffff;
+    --bg-secondary: #f9fafb;
+    --bg-tertiary: #f3f4f6;
+    
+    --text-primary: #111827;
+    --text-secondary: #6b7280;
+    --text-tertiary: #9ca3af;
+    
+    --border-color: #e5e7eb;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    
+    --transition: all 0.2s ease;
+}
+
+[data-theme="dark"] {
+    --primary-color: #818cf8;
+    --primary-hover: #6366f1;
+    --primary-light: #1e1b4b;
+    
+    --bg-primary: #111827;
+    --bg-secondary: #1f2937;
+    --bg-tertiary: #374151;
+    
+    --text-primary: #f9fafb;
+    --text-secondary: #d1d5db;
+    --text-tertiary: #9ca3af;
+    
+    --border-color: #374151;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+}
+
+/* ===========================
+   Reset & Base Styles
+   =========================== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background-color: var(--bg-secondary);
+    transition: var(--transition);
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+button {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+input, select, textarea {
+    font-family: inherit;
+    font-size: inherit;
+}
+
+/* ===========================
+   Button Styles
+   =========================== */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    font-size: 14px;
+    transition: var(--transition);
+    cursor: pointer;
+    border: none;
+    outline: none;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.btn-secondary {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+    background-color: var(--border-color);
+}
+
+.btn-danger {
+    background-color: var(--danger-color);
+    color: white;
+}
+
+.btn-danger:hover {
+    background-color: #dc2626;
+}
+
+.btn-large {
+    padding: 14px 32px;
+    font-size: 16px;
+}
+
+.btn-full {
+    width: 100%;
+}
+
+.btn-text {
+    background: none;
+    color: var(--primary-color);
+    padding: 8px 12px;
+    font-weight: 500;
+}
+
+.btn-text:hover {
+    background-color: var(--primary-light);
+}
+
+.btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    background-color: transparent;
+    color: var(--text-secondary);
+    transition: var(--transition);
+}
+
+.btn-icon:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+/* ===========================
+   Landing Page Styles
+   =========================== */
+.landing-container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.landing-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 40px;
+    background-color: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.nav-brand svg {
+    color: var(--primary-color);
+}
+
+.nav-links {
+    display: flex;
+    gap: 16px;
+}
+
+.landing-main {
+    flex: 1;
+    padding: 60px 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.hero-section {
+    text-align: center;
+    margin-bottom: 80px;
+}
+
+.hero-title {
+    font-size: 48px;
+    font-weight: 800;
+    margin-bottom: 16px;
+    color: var(--text-primary);
+}
+
+.hero-subtitle {
+    font-size: 20px;
+    color: var(--text-secondary);
+    margin-bottom: 32px;
+}
+
+.features-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 24px;
+    margin-top: 60px;
+}
+
+.feature-card {
+    background-color: var(--bg-primary);
+    padding: 32px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    text-align: center;
+    transition: var(--transition);
+}
+
+.feature-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+.feature-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+}
+
+.feature-card h3 {
+    font-size: 20px;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+
+.feature-card p {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.landing-footer {
+    padding: 24px 40px;
+    text-align: center;
+    border-top: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+    color: var(--text-secondary);
+}
+
+/* ===========================
+   Auth Pages Styles
+   =========================== */
+.auth-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: linear-gradient(135deg, var(--primary-light) 0%, var(--bg-secondary) 100%);
+}
+
+.auth-box {
+    background-color: var(--bg-primary);
+    padding: 40px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    width: 100%;
+    max-width: 420px;
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 32px;
+}
+
+.auth-logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.auth-logo svg {
+    color: var(--primary-color);
+}
+
+.auth-header h1 {
+    font-size: 24px;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+
+.auth-header p {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-weight: 500;
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.form-group input {
+    padding: 12px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    transition: var(--transition);
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.form-options {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+.checkbox-label input {
+    cursor: pointer;
+}
+
+.link-text {
+    color: var(--primary-color);
+    font-size: 14px;
+    transition: var(--transition);
+}
+
+.link-text:hover {
+    color: var(--primary-hover);
+}
+
+.auth-message {
+    padding: 12px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    display: none;
+}
+
+.auth-message.success {
+    display: block;
+    background-color: #d1fae5;
+    color: #065f46;
+    border: 1px solid #10b981;
+}
+
+.auth-message.error {
+    display: block;
+    background-color: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #ef4444;
+}
+
+.auth-footer {
+    margin-top: 24px;
+    text-align: center;
+}
+
+/* ===========================
+   Modal Styles
+   =========================== */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background-color: var(--bg-primary);
+    border-radius: var(--radius-lg);
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow-xl);
+}
+
+.modal-large {
+    max-width: 800px;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-header h2 {
+    font-size: 20px;
+    color: var(--text-primary);
+}
+
+.modal-close {
+    font-size: 28px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    background: none;
+    border: none;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    transition: var(--transition);
+}
+
+.modal-close:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.modal-body {
+    padding: 24px;
+}
+
+.modal-footer {
+    padding: 24px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+/* ===========================
+   Empty State
+   =========================== */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+}
+
+.empty-state svg {
+    color: var(--text-tertiary);
+    margin-bottom: 16px;
+}
+
+.empty-state p {
+    color: var(--text-secondary);
+    font-size: 16px;
+    margin-bottom: 20px;
+}
+
+/* ===========================
+   Utility Classes
+   =========================== */
+.hidden {
+    display: none !important;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-primary {
+    color: var(--primary-color);
+}
+
+.text-success {
+    color: var(--success-color);
+}
+
+.text-danger {
+    color: var(--danger-color);
+}
+
+.text-warning {
+    color: var(--warning-color);
+}
+
+/* ===========================
+   Scrollbar Styles
+   =========================== */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-tertiary);
+}
