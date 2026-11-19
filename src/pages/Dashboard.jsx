@@ -8,6 +8,7 @@ export default function Dashboard() {
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light')
   const [stats, setStats] = useState({
     totalFiles: 0,
+    sharedFiles: 0,
     totalFolders: 0,
     totalFavorites: 0,
     storageUsed: 0,
@@ -19,11 +20,26 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  // User profiles & permissions state
+  const [availableUsers, setAvailableUsers] = useState([])
+  const [profilesMap, setProfilesMap] = useState({})
+  const [filePermissionsMap, setFilePermissionsMap] = useState({})
+
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false)
+  const [uploadQueue, setUploadQueue] = useState([])
+  const [uploadAccessType, setUploadAccessType] = useState('private') // 'private' | 'all' | 'specific'
+  const [uploadSelectedUsers, setUploadSelectedUsers] = useState([])
   const [uploading, setUploading] = useState(false)
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef(null)
+
+  // Share modal state for existing files
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [shareTargetFile, setShareTargetFile] = useState(null)
+  const [shareAccessType, setShareAccessType] = useState('private')
+  const [shareSelectedUsers, setShareSelectedUsers] = useState([])
+  const [savingShare, setSavingShare] = useState(false)
 
   // Folder modal state
   const [showFolderModal, setShowFolderModal] = useState(false)
@@ -45,52 +61,69 @@ export default function Dashboard() {
     try {
       setLoading(true)
 
-      // Get file count
-      const { count: filesCount } = await supabase
-        .from('files')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .is('deleted_at', null)
+      // 1. Load profiles to list registered users for sharing
+      try {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, email, full_name')
 
-      // Get folder count
+        if (profilesData && profilesData.length > 0) {
+          const pMap = {}
+          profilesData.forEach(p => {
+            pMap[p.id] = p
+          })
+          setProfilesMap(pMap)
+          setAvailableUsers(profilesData.filter(p => p.id !== user.id))
+        }
+      } catch (e) {
+        console.warn('Could not load profiles:', e)
+      }
+
+      // 2. Load file permissions
+      try {
+        const { data: permsData } = await supabase
+          .from('file_permissions')
+          .select('*')
+
+        if (permsData) {
+          const fpMap = {}
+          permsData.forEach(p => {
+            if (!fpMap[p.file_id]) fpMap[p.file_id] = []
+            fpMap[p.file_id].push(p.user_id)
+          })
+          setFilePermissionsMap(fpMap)
+        }
+      } catch (e) {
+        console.warn('Could not load file permissions (table may not exist yet):', e)
+      }
+
+      // 3. Load all files accessible to this user (handled by RLS: own files, 'all', or permitted)
+      const { data: all, error: filesError } = await supabase
+        .from('files')
+        .select('*')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+
+      if (filesError) throw filesError
+
+      const myFilesList = (all || []).filter(f => f.user_id === user.id)
+      const sharedWithMeList = (all || []).filter(f => f.user_id !== user.id)
+      const favoritesList = (all || []).filter(f => f.is_favorite)
+
+      // 4. Folder count
       const { count: foldersCount } = await supabase
         .from('folders')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
 
-      // Get favorite count
-      const { count: favoritesCount } = await supabase
-        .from('files')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('is_favorite', true)
-        .is('deleted_at', null)
-
-      // Get storage usage from profile
+      // 5. Storage usage from profile
       const { data: profile } = await supabase
         .from('profiles')
         .select('storage_used, storage_limit')
         .eq('id', user.id)
         .maybeSingle()
 
-      // Get recent files
-      const { data: recent } = await supabase
-        .from('files')
-        .select('*')
-        .eq('user_id', user.id)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(6)
-
-      // Get all files
-      const { data: all } = await supabase
-        .from('files')
-        .select('*')
-        .eq('user_id', user.id)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-
-      // Get folders
+      // 6. Folders
       const { data: foldersData } = await supabase
         .from('folders')
         .select('*')
@@ -99,15 +132,16 @@ export default function Dashboard() {
         .order('created_at', { ascending: false })
 
       setStats({
-        totalFiles: filesCount || 0,
+        totalFiles: myFilesList.length,
+        sharedFiles: sharedWithMeList.length,
         totalFolders: foldersCount || 0,
-        totalFavorites: favoritesCount || 0,
+        totalFavorites: favoritesList.length,
         storageUsed: profile?.storage_used || 0,
         storageLimit: profile?.storage_limit || 53687091200
       })
 
-      setRecentFiles(recent || [])
       setAllFiles(all || [])
+      setRecentFiles((all || []).slice(0, 6))
       setFolders(foldersData || [])
     } catch (error) {
       console.error('Error loading dashboard data:', error)
@@ -139,21 +173,35 @@ export default function Dashboard() {
     return '📄'
   }
 
-  const handleUploadFiles = async (filesList) => {
-    if (!filesList || filesList.length === 0 || !user) return
+  // Handle files queued for upload
+  const handleFilesSelected = (filesList) => {
+    if (!filesList || filesList.length === 0) return
+    const validFiles = []
+    for (const f of filesList) {
+      if (f.size > 50 * 1024 * 1024) {
+        alert(`File "${f.name}" exceeds the 50MB size limit.`)
+      } else {
+        validFiles.push(f)
+      }
+    }
+    setUploadQueue(prev => [...prev, ...validFiles])
+  }
+
+  const handleRemoveFromQueue = (index) => {
+    setUploadQueue(prev => prev.filter((_, i) => i !== index))
+  }
+
+  // Upload files and attach permissions
+  const handleConfirmUpload = async () => {
+    if (uploadQueue.length === 0 || !user) return
     setUploading(true)
 
     try {
-      for (const file of filesList) {
-        if (file.size > 50 * 1024 * 1024) {
-          alert(`File "${file.name}" exceeds the 50MB size limit.`)
-          continue
-        }
-
+      for (const file of uploadQueue) {
         const sanitized = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const storagePath = `${user.id}/${Date.now()}_${sanitized}`
 
-        // Upload to Storage
+        // 1. Upload to Supabase Storage
         const { error: uploadError } = await supabase.storage
           .from(STORAGE_BUCKET)
           .upload(storagePath, file, { cacheControl: '3600', upsert: false })
@@ -164,24 +212,49 @@ export default function Dashboard() {
           continue
         }
 
-        // Insert metadata into database
+        // 2. Insert metadata into public.files
         const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : ''
-        const { error: dbError } = await supabase.from('files').insert({
+        const insertPayload = {
           user_id: user.id,
           original_name: file.name,
           storage_path: storagePath,
           file_extension: ext,
           mime_type: file.type || 'application/octet-stream',
           file_size: file.size,
-          is_favorite: false
-        })
+          is_favorite: false,
+          access_type: uploadAccessType
+        }
+
+        const { data: insertedFile, error: dbError } = await supabase
+          .from('files')
+          .insert(insertPayload)
+          .select()
+          .single()
 
         if (dbError) {
           console.error('Database record error:', dbError)
           alert(`Failed to save record for "${file.name}": ${dbError.message}`)
+          continue
+        }
+
+        // 3. If access_type is specific, insert user permissions
+        if (insertedFile && uploadAccessType === 'specific' && uploadSelectedUsers.length > 0) {
+          const perms = uploadSelectedUsers.map(uid => ({
+            file_id: insertedFile.id,
+            user_id: uid,
+            granted_by: user.id
+          }))
+          const { error: permError } = await supabase.from('file_permissions').insert(perms)
+          if (permError) {
+            console.warn('Failed to insert file_permissions (ensure ADD_FILE_SHARING.sql was run):', permError)
+          }
         }
       }
 
+      // Reset and close
+      setUploadQueue([])
+      setUploadAccessType('private')
+      setUploadSelectedUsers([])
       setShowUploadModal(false)
       await loadDashboardData()
     } catch (err) {
@@ -189,6 +262,51 @@ export default function Dashboard() {
       alert('Upload failed: ' + err.message)
     } finally {
       setUploading(false)
+    }
+  }
+
+  // Open Share modal for an existing file
+  const handleOpenShareModal = (file) => {
+    setShareTargetFile(file)
+    setShareAccessType(file.access_type || 'private')
+    setShareSelectedUsers(filePermissionsMap[file.id] || [])
+    setShowShareModal(true)
+  }
+
+  // Save updated share permissions
+  const handleSaveShare = async () => {
+    if (!shareTargetFile || !user) return
+    setSavingShare(true)
+    try {
+      // 1. Update file access_type
+      const { error: fileErr } = await supabase
+        .from('files')
+        .update({ access_type: shareAccessType })
+        .eq('id', shareTargetFile.id)
+
+      if (fileErr) throw fileErr
+
+      // 2. Refresh file_permissions table
+      await supabase.from('file_permissions').delete().eq('file_id', shareTargetFile.id)
+
+      if (shareAccessType === 'specific' && shareSelectedUsers.length > 0) {
+        const perms = shareSelectedUsers.map(uid => ({
+          file_id: shareTargetFile.id,
+          user_id: uid,
+          granted_by: user.id
+        }))
+        const { error: permErr } = await supabase.from('file_permissions').insert(perms)
+        if (permErr) throw permErr
+      }
+
+      setShowShareModal(false)
+      setShareTargetFile(null)
+      await loadDashboardData()
+    } catch (err) {
+      console.error('Error updating sharing permissions:', err)
+      alert('Failed to update permissions: ' + err.message)
+    } finally {
+      setSavingShare(false)
     }
   }
 
@@ -249,7 +367,6 @@ export default function Dashboard() {
         .eq('id', file.id)
 
       if (error) throw error
-
       await loadDashboardData()
     } catch (err) {
       console.error('Error deleting file:', err)
@@ -280,45 +397,88 @@ export default function Dashboard() {
     }
   }
 
+  // Filtered views
+  const myFiles = allFiles.filter(f => f.user_id === user?.id)
+  const sharedWithMeFiles = allFiles.filter(f => f.user_id !== user?.id)
   const favoriteFiles = allFiles.filter(f => f.is_favorite)
 
-  const renderFileCard = (file) => (
-    <div key={file.id} className="file-card">
-      <div className="file-preview">
-        <span className="file-icon">{getFileIcon(file.mime_type)}</span>
+  const renderFileCard = (file) => {
+    const isOwner = file.user_id === user?.id
+    const ownerProfile = profilesMap[file.user_id]
+    const ownerDisplayName = ownerProfile?.full_name || ownerProfile?.email?.split('@')[0] || 'Another User'
+    const specificPermsCount = (filePermissionsMap[file.id] || []).length
+
+    return (
+      <div key={file.id} className="file-card">
+        <div className="file-preview">
+          <span className="file-icon">{getFileIcon(file.mime_type)}</span>
+        </div>
+        <div className="file-info">
+          <div className="file-name" title={file.original_name}>{file.original_name}</div>
+          <div className="file-meta">{formatFileSize(file.file_size)} • {formatDate(file.created_at)}</div>
+          
+          {/* Access Badge */}
+          {isOwner ? (
+            file.access_type === 'all' ? (
+              <span className="file-access-badge badge-all" title="All registered users can view this file">
+                🌐 Everyone
+              </span>
+            ) : file.access_type === 'specific' ? (
+              <span className="file-access-badge badge-specific" title={`Shared with ${specificPermsCount} user(s)`}>
+                👥 Shared ({specificPermsCount})
+              </span>
+            ) : (
+              <span className="file-access-badge badge-private" title="Only you can view this file">
+                🔒 Private
+              </span>
+            )
+          ) : (
+            <span className="file-access-badge badge-shared-from" title={`Shared by ${ownerDisplayName} (${ownerProfile?.email || ''})`}>
+              👥 From: {ownerDisplayName}
+            </span>
+          )}
+        </div>
+        <div className="file-actions">
+          <button
+            type="button"
+            className="file-action-btn btn btn-secondary"
+            onClick={() => handleDownload(file)}
+            title="Download file"
+          >
+            ⬇️
+          </button>
+          <button
+            type="button"
+            className="file-action-btn btn btn-secondary"
+            onClick={() => handleToggleFavorite(file)}
+            title={file.is_favorite ? 'Remove Favorite' : 'Add to Favorites'}
+          >
+            {file.is_favorite ? '⭐' : '☆'}
+          </button>
+          {isOwner && (
+            <>
+              <button
+                type="button"
+                className="file-action-btn btn btn-secondary"
+                onClick={() => handleOpenShareModal(file)}
+                title="Manage sharing & access"
+              >
+                👥
+              </button>
+              <button
+                type="button"
+                className="file-action-btn btn btn-danger"
+                onClick={() => handleDeleteFile(file)}
+                title="Delete file"
+              >
+                🗑️
+              </button>
+            </>
+          )}
+        </div>
       </div>
-      <div className="file-info">
-        <div className="file-name" title={file.original_name}>{file.original_name}</div>
-        <div className="file-meta">{formatFileSize(file.file_size)} • {formatDate(file.created_at)}</div>
-      </div>
-      <div className="file-actions">
-        <button
-          type="button"
-          className="file-action-btn btn btn-secondary"
-          onClick={() => handleDownload(file)}
-          title="Download file"
-        >
-          ⬇️
-        </button>
-        <button
-          type="button"
-          className="file-action-btn btn btn-secondary"
-          onClick={() => handleToggleFavorite(file)}
-          title={file.is_favorite ? 'Remove Favorite' : 'Add to Favorites'}
-        >
-          {file.is_favorite ? '⭐' : '☆'}
-        </button>
-        <button
-          type="button"
-          className="file-action-btn btn btn-danger"
-          onClick={() => handleDeleteFile(file)}
-          title="Delete file"
-        >
-          🗑️
-        </button>
-      </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="dashboard-body">
@@ -358,6 +518,30 @@ export default function Dashboard() {
               <polyline points="13 2 13 9 20 9"></polyline>
             </svg>
             <span>All Files</span>
+          </a>
+          <a
+            href="#my-files"
+            className={`nav-item ${activePage === 'my-files' ? 'active' : ''}`}
+            onClick={(e) => { e.preventDefault(); setActivePage('my-files'); setSidebarOpen(false); }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+              <circle cx="12" cy="7" r="4"></circle>
+            </svg>
+            <span>My Files ({myFiles.length})</span>
+          </a>
+          <a
+            href="#shared"
+            className={`nav-item ${activePage === 'shared' ? 'active' : ''}`}
+            onClick={(e) => { e.preventDefault(); setActivePage('shared'); setSidebarOpen(false); }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            <span>Shared with Me ({sharedWithMeFiles.length})</span>
           </a>
           <a
             href="#folders"
@@ -417,7 +601,9 @@ export default function Dashboard() {
             </button>
             <h1 className="page-title">
               {activePage === 'dashboard' && 'Dashboard'}
-              {activePage === 'all-files' && 'All Files'}
+              {activePage === 'all-files' && 'All Accessible Files'}
+              {activePage === 'my-files' && 'My Uploaded Files'}
+              {activePage === 'shared' && 'Shared with Me'}
               {activePage === 'folders' && 'My Folders'}
               {activePage === 'favorites' && 'Favorites'}
             </h1>
@@ -449,7 +635,7 @@ export default function Dashboard() {
                     <polyline points="17 8 12 3 7 8"></polyline>
                     <line x1="12" y1="3" x2="12" y2="15"></line>
                   </svg>
-                  <span>Upload Files</span>
+                  <span>Upload & Share Files</span>
                 </button>
                 <button
                   type="button"
@@ -465,40 +651,67 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              {/* Stats Grid */}
+              {/* Stats Overview */}
               <div className="stats-grid">
                 <div className="stat-card">
-                  <div className="stat-icon stat-icon-primary">📄</div>
+                  <div className="stat-icon stat-icon-primary">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                      <polyline points="13 2 13 9 20 9"></polyline>
+                    </svg>
+                  </div>
                   <div className="stat-info">
-                    <h3 className="stat-value">{stats.totalFiles}</h3>
-                    <p className="stat-label">Total Files</p>
+                    <div className="stat-value">{stats.totalFiles}</div>
+                    <div className="stat-label">My Files</div>
                   </div>
                 </div>
+
                 <div className="stat-card">
-                  <div className="stat-icon stat-icon-success">💾</div>
+                  <div className="stat-icon" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="9" cy="7" r="4"></circle>
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                  </div>
                   <div className="stat-info">
-                    <h3 className="stat-value">{formatFileSize(stats.storageUsed)}</h3>
-                    <p className="stat-label">Storage Used</p>
+                    <div className="stat-value">{stats.sharedFiles}</div>
+                    <div className="stat-label">Shared With Me</div>
                   </div>
                 </div>
+
                 <div className="stat-card">
-                  <div className="stat-icon stat-icon-warning">📁</div>
+                  <div className="stat-icon stat-icon-secondary">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                    </svg>
+                  </div>
                   <div className="stat-info">
-                    <h3 className="stat-value">{stats.totalFolders}</h3>
-                    <p className="stat-label">Folders</p>
+                    <div className="stat-value">{stats.totalFavorites}</div>
+                    <div className="stat-label">Favorites</div>
                   </div>
                 </div>
+
                 <div className="stat-card">
-                  <div className="stat-icon stat-icon-info">⭐</div>
+                  <div className="stat-icon stat-icon-info">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    </svg>
+                  </div>
                   <div className="stat-info">
-                    <h3 className="stat-value">{stats.totalFavorites}</h3>
-                    <p className="stat-label">Favorites</p>
+                    <div className="stat-value">{formatFileSize(stats.storageUsed)}</div>
+                    <div className="stat-label">Storage Used ({Math.round((stats.storageUsed / stats.storageLimit) * 100)}%)</div>
                   </div>
                 </div>
               </div>
 
+              {/* Recent Files Section */}
               <div className="section-header">
                 <h2>Recent Files</h2>
+                <a href="#all-files" className="view-all-link" onClick={(e) => { e.preventDefault(); setActivePage('all-files'); }}>
+                  View All &rarr;
+                </a>
               </div>
               <div className="files-grid">
                 {recentFiles.length === 0 ? (
@@ -507,7 +720,7 @@ export default function Dashboard() {
                       <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
                       <polyline points="13 2 13 9 20 9"></polyline>
                     </svg>
-                    <p>No files yet. Click &quot;Upload Files&quot; to get started!</p>
+                    <p>No files yet. Click &quot;Upload & Share Files&quot; to get started!</p>
                   </div>
                 ) : (
                   recentFiles.map(renderFileCard)
@@ -520,13 +733,13 @@ export default function Dashboard() {
           {activePage === 'all-files' && (
             <div className="page-content active">
               <div className="section-header">
-                <h2>All Files ({allFiles.length})</h2>
+                <h2>All Accessible Files ({allFiles.length})</h2>
                 <button
                   type="button"
                   className="action-btn action-btn-primary"
                   onClick={() => setShowUploadModal(true)}
                 >
-                  <span>Upload Files</span>
+                  <span>Upload & Share Files</span>
                 </button>
               </div>
               <div className="files-grid">
@@ -536,10 +749,60 @@ export default function Dashboard() {
                       <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
                       <polyline points="13 2 13 9 20 9"></polyline>
                     </svg>
-                    <p>No files uploaded yet.</p>
+                    <p>No files found.</p>
                   </div>
                 ) : (
                   allFiles.map(renderFileCard)
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* My Files Page */}
+          {activePage === 'my-files' && (
+            <div className="page-content active">
+              <div className="section-header">
+                <h2>My Uploaded Files ({myFiles.length})</h2>
+                <button
+                  type="button"
+                  className="action-btn action-btn-primary"
+                  onClick={() => setShowUploadModal(true)}
+                >
+                  <span>Upload Files</span>
+                </button>
+              </div>
+              <div className="files-grid">
+                {myFiles.length === 0 ? (
+                  <div className="empty-state">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                    </svg>
+                    <p>You haven&apos;t uploaded any files yet.</p>
+                  </div>
+                ) : (
+                  myFiles.map(renderFileCard)
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Shared with Me Page */}
+          {activePage === 'shared' && (
+            <div className="page-content active">
+              <div className="section-header">
+                <h2>Files Shared with Me ({sharedWithMeFiles.length})</h2>
+              </div>
+              <div className="files-grid">
+                {sharedWithMeFiles.length === 0 ? (
+                  <div className="empty-state">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="9" cy="7" r="4"></circle>
+                    </svg>
+                    <p>No files have been shared with you yet.</p>
+                  </div>
+                ) : (
+                  sharedWithMeFiles.map(renderFileCard)
                 )}
               </div>
             </div>
@@ -608,12 +871,12 @@ export default function Dashboard() {
         </div>
       </main>
 
-      {/* Upload Modal */}
+      {/* Upload & Share Modal */}
       {showUploadModal && (
         <div className="modal active">
-          <div className="modal-content">
+          <div className="modal-content modal-large">
             <div className="modal-header">
-              <h2>Upload Files</h2>
+              <h2>Upload & Share Files</h2>
               <button 
                 type="button" 
                 className="modal-close" 
@@ -623,6 +886,7 @@ export default function Dashboard() {
               </button>
             </div>
             <div className="modal-body">
+              {/* Drag & Drop Area */}
               <div
                 className={`upload-area ${isDragOver ? 'drag-over' : ''}`}
                 onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
@@ -631,7 +895,7 @@ export default function Dashboard() {
                   e.preventDefault();
                   setIsDragOver(false);
                   if (e.dataTransfer.files?.length) {
-                    handleUploadFiles(Array.from(e.dataTransfer.files));
+                    handleFilesSelected(Array.from(e.dataTransfer.files));
                   }
                 }}
                 onClick={() => !uploading && fileInputRef.current?.click()}
@@ -644,7 +908,7 @@ export default function Dashboard() {
                   style={{ display: 'none' }}
                   onChange={(e) => {
                     if (e.target.files?.length) {
-                      handleUploadFiles(Array.from(e.target.files));
+                      handleFilesSelected(Array.from(e.target.files));
                       e.target.value = '';
                     }
                   }}
@@ -655,18 +919,282 @@ export default function Dashboard() {
                   <polyline points="17 8 12 3 7 8"></polyline>
                   <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
-                <h3>{uploading ? 'Uploading files...' : 'Drag and drop files here'}</h3>
-                <p>{uploading ? 'Please wait while files upload to storage...' : 'Or click to select files (Max 50MB per file)'}</p>
+                <h3>{uploading ? 'Uploading and sharing files...' : 'Select or Drop Files Here'}</h3>
+                <p>Max 50MB per file</p>
+              </div>
+
+              {/* Selected Files Queue */}
+              {uploadQueue.length > 0 && (
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: 'var(--text-primary)' }}>
+                    Files to Upload ({uploadQueue.length}):
+                  </div>
+                  <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
+                    {uploadQueue.map((file, idx) => (
+                      <div key={idx} className="queued-file-item">
+                        <span>{file.name} ({formatFileSize(file.size)})</span>
+                        <button
+                          type="button"
+                          className="btn-remove-queue"
+                          onClick={() => handleRemoveFromQueue(idx)}
+                          disabled={uploading}
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Permissions & Sharing Option */}
+              <div className="access-section">
+                <div className="access-title">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                  </svg>
+                  <span>Who can access these files?</span>
+                </div>
+
+                <div className="access-options-grid">
+                  <div 
+                    className={`access-card ${uploadAccessType === 'private' ? 'selected' : ''}`}
+                    onClick={() => setUploadAccessType('private')}
+                  >
+                    <div className="access-card-header">
+                      <span>🔒 Only Me</span>
+                    </div>
+                    <span className="access-card-desc">Only you can view and download</span>
+                  </div>
+
+                  <div 
+                    className={`access-card ${uploadAccessType === 'all' ? 'selected' : ''}`}
+                    onClick={() => setUploadAccessType('all')}
+                  >
+                    <div className="access-card-header">
+                      <span>🌐 Everyone</span>
+                    </div>
+                    <span className="access-card-desc">All registered users can view</span>
+                  </div>
+
+                  <div 
+                    className={`access-card ${uploadAccessType === 'specific' ? 'selected' : ''}`}
+                    onClick={() => setUploadAccessType('specific')}
+                  >
+                    <div className="access-card-header">
+                      <span>👥 Specific Users</span>
+                    </div>
+                    <span className="access-card-desc">Select specific registered people</span>
+                  </div>
+                </div>
+
+                {/* Specific Users Picker */}
+                {uploadAccessType === 'specific' && (
+                  <div className="users-picker-box">
+                    <div className="users-picker-header">
+                      <span>Select users who can access:</span>
+                      <button
+                        type="button"
+                        style={{ background: 'none', border: 'none', color: 'var(--primary-color)', cursor: 'pointer', fontSize: '12px' }}
+                        onClick={() => {
+                          if (uploadSelectedUsers.length === availableUsers.length) {
+                            setUploadSelectedUsers([])
+                          } else {
+                            setUploadSelectedUsers(availableUsers.map(u => u.id))
+                          }
+                        }}
+                      >
+                        {uploadSelectedUsers.length === availableUsers.length ? 'Deselect All' : 'Select All'}
+                      </button>
+                    </div>
+
+                    {availableUsers.length === 0 ? (
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        No other users found in database yet.
+                      </p>
+                    ) : (
+                      <div className="users-list-scroll">
+                        {availableUsers.map(u => {
+                          const isChecked = uploadSelectedUsers.includes(u.id)
+                          return (
+                            <label key={u.id} className="user-select-row">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  if (isChecked) {
+                                    setUploadSelectedUsers(prev => prev.filter(id => id !== u.id))
+                                  } else {
+                                    setUploadSelectedUsers(prev => [...prev, u.id])
+                                  }
+                                }}
+                              />
+                              <div className="user-avatar-mini">
+                                {(u.full_name || u.email || 'U')[0].toUpperCase()}
+                              </div>
+                              <div className="user-select-info">
+                                <div className="user-select-name">{u.full_name || u.email.split('@')[0]}</div>
+                                <div className="user-select-email">{u.email}</div>
+                              </div>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <div className="modal-footer">
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => setShowUploadModal(false)}
+                onClick={() => {
+                  setShowUploadModal(false)
+                  setUploadQueue([])
+                }}
                 disabled={uploading}
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleConfirmUpload}
+                disabled={uploading || uploadQueue.length === 0}
+              >
+                {uploading ? 'Uploading...' : `Upload & Save (${uploadQueue.length} files)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share / Access Management Modal (For Existing Files) */}
+      {showShareModal && shareTargetFile && (
+        <div className="modal active">
+          <div className="modal-content modal-large">
+            <div className="modal-header">
+              <h2>Share &quot;{shareTargetFile.original_name}&quot;</h2>
+              <button 
+                type="button" 
+                className="modal-close" 
+                onClick={() => !savingShare && setShowShareModal(false)}
+              >
+                &times;
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                Manage who can view and download this file across accounts.
+              </p>
+
+              <div className="access-options-grid">
+                <div 
+                  className={`access-card ${shareAccessType === 'private' ? 'selected' : ''}`}
+                  onClick={() => setShareAccessType('private')}
+                >
+                  <div className="access-card-header">
+                    <span>🔒 Only Me</span>
+                  </div>
+                  <span className="access-card-desc">Only you can view and download</span>
+                </div>
+
+                <div 
+                  className={`access-card ${shareAccessType === 'all' ? 'selected' : ''}`}
+                  onClick={() => setShareAccessType('all')}
+                >
+                  <div className="access-card-header">
+                    <span>🌐 Everyone</span>
+                  </div>
+                  <span className="access-card-desc">All registered users can view</span>
+                </div>
+
+                <div 
+                  className={`access-card ${shareAccessType === 'specific' ? 'selected' : ''}`}
+                  onClick={() => setShareAccessType('specific')}
+                >
+                  <div className="access-card-header">
+                    <span>👥 Specific Users</span>
+                  </div>
+                  <span className="access-card-desc">Select specific registered people</span>
+                </div>
+              </div>
+
+              {/* Specific Users Checklist */}
+              {shareAccessType === 'specific' && (
+                <div className="users-picker-box">
+                  <div className="users-picker-header">
+                    <span>Select people to share with:</span>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', color: 'var(--primary-color)', cursor: 'pointer', fontSize: '12px' }}
+                      onClick={() => {
+                        if (shareSelectedUsers.length === availableUsers.length) {
+                          setShareSelectedUsers([])
+                        } else {
+                          setShareSelectedUsers(availableUsers.map(u => u.id))
+                        }
+                      }}
+                    >
+                      {shareSelectedUsers.length === availableUsers.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
+
+                  {availableUsers.length === 0 ? (
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      No other registered users found.
+                    </p>
+                  ) : (
+                    <div className="users-list-scroll">
+                      {availableUsers.map(u => {
+                        const isChecked = shareSelectedUsers.includes(u.id)
+                        return (
+                          <label key={u.id} className="user-select-row">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {
+                                if (isChecked) {
+                                  setShareSelectedUsers(prev => prev.filter(id => id !== u.id))
+                                } else {
+                                  setShareSelectedUsers(prev => [...prev, u.id])
+                                }
+                              }}
+                            />
+                            <div className="user-avatar-mini">
+                              {(u.full_name || u.email || 'U')[0].toUpperCase()}
+                            </div>
+                            <div className="user-select-info">
+                              <div className="user-select-name">{u.full_name || u.email.split('@')[0]}</div>
+                              <div className="user-select-email">{u.email}</div>
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowShareModal(false)}
+                disabled={savingShare}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSaveShare}
+                disabled={savingShare}
+              >
+                {savingShare ? 'Saving...' : 'Save Permissions'}
               </button>
             </div>
           </div>
