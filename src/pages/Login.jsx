@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
@@ -111,7 +111,7 @@ export default function Login() {
         </form>
 
         <div className="auth-footer">
-          <a href="/" className="link-text">← Back to home</a>
+          <Link to="/" className="link-text">← Back to home</Link>
         </div>
       </div>
 
