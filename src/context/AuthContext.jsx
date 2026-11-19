@@ -38,6 +38,36 @@ export const AuthProvider = ({ children }) => {
     return { data, error }
   }
 
+  const signUp = async (email, password, fullName) => {
+    const cleanName = fullName?.trim() || email.split('@')[0]
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: cleanName
+        }
+      }
+    })
+
+    // If signup created a user session immediately, also ensure a profile entry exists
+    if (!error && data?.user) {
+      try {
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          email: data.user.email,
+          full_name: cleanName,
+          storage_used: 0,
+          storage_limit: 53687091200
+        }, { onConflict: 'id' })
+      } catch (e) {
+        console.warn('Profile creation handled by trigger or skipped:', e)
+      }
+    }
+
+    return { data, error }
+  }
+
   const signOut = async () => {
     const { error } = await supabase.auth.signOut()
     return { error }
@@ -54,6 +84,7 @@ export const AuthProvider = ({ children }) => {
     user,
     loading,
     signIn,
+    signUp,
     signOut,
     resetPassword
   }

@@ -225,11 +225,24 @@ export default function Dashboard() {
           access_type: uploadAccessType
         }
 
-        const { data: insertedFile, error: dbError } = await supabase
+        let { data: insertedFile, error: dbError } = await supabase
           .from('files')
           .insert(insertPayload)
           .select()
           .single()
+
+        // Fallback: If access_type column has not been added yet in database
+        if (dbError && (dbError.message?.includes('access_type') || dbError.code === 'PGRST204')) {
+          console.warn('access_type column missing, falling back to standard insert')
+          delete insertPayload.access_type
+          const retry = await supabase
+            .from('files')
+            .insert(insertPayload)
+            .select()
+            .single()
+          insertedFile = retry.data
+          dbError = retry.error
+        }
 
         if (dbError) {
           console.error('Database record error:', dbError)
