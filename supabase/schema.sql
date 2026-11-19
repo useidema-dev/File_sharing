@@ -314,20 +314,35 @@ CREATE TRIGGER update_files_updated_at
 
 -- Function to auto-create profile on user signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+SECURITY DEFINER
+SET search_path = public
+LANGUAGE plpgsql
+AS $$
 BEGIN
-    INSERT INTO public.profiles (id, email, full_name)
+    INSERT INTO public.profiles (id, email, full_name, storage_used, storage_limit)
     VALUES (
         NEW.id,
         NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1))
-    );
+        COALESCE(
+            NEW.raw_user_meta_data->>'full_name',
+            split_part(NEW.email, '@', 1)
+        ),
+        0,
+        53687091200
+    )
+    ON CONFLICT (id) DO NOTHING;
     RETURN NEW;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE WARNING 'Failed to create profile for user %: %', NEW.email, SQLERRM;
+        RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- Trigger to create profile automatically
-CREATE OR REPLACE TRIGGER on_auth_user_created
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_new_user();
@@ -407,14 +422,14 @@ WHERE is_favorite = TRUE AND deleted_at IS NULL;
 /*
 -- Create storage bucket (run in Supabase Dashboard → Storage)
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('files', 'files', false);
+VALUES ('file_store', 'file_store', false);
 
 -- Storage policies for private file access
 -- Users can upload to their own folder
 CREATE POLICY "Users can upload own files"
 ON storage.objects FOR INSERT
 WITH CHECK (
-    bucket_id = 'files' AND
+    bucket_id = 'file_store' AND
     auth.uid()::text = (storage.foldername(name))[1]
 );
 
@@ -422,7 +437,7 @@ WITH CHECK (
 CREATE POLICY "Users can update own files"
 ON storage.objects FOR UPDATE
 USING (
-    bucket_id = 'files' AND
+    bucket_id = 'file_store' AND
     auth.uid()::text = (storage.foldername(name))[1]
 );
 
@@ -430,7 +445,7 @@ USING (
 CREATE POLICY "Users can delete own files"
 ON storage.objects FOR DELETE
 USING (
-    bucket_id = 'files' AND
+    bucket_id = 'file_store' AND
     auth.uid()::text = (storage.foldername(name))[1]
 );
 
@@ -438,7 +453,7 @@ USING (
 CREATE POLICY "Users can view own files"
 ON storage.objects FOR SELECT
 USING (
-    bucket_id = 'files' AND
+    bucket_id = 'file_store' AND
     auth.uid()::text = (storage.foldername(name))[1]
 );
 */
